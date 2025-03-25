@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Table Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+        }
+        input {
+            margin-bottom: 10px;
+        }
+        .data-container {
+            margin-top: 10px;
+            text-align: left;
+        }
+        .json-value {
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f4f4;
+            cursor: pointer;
+        }
+        select {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>JSON Table Viewer</h2>
+    <input type="file" id="fileInput" accept=".json">
+    <div id="output"></div>
+
+    <script>
+        let filters = {};
+
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                alert("No file selected.");
+                return;
+            }
+
+            console.log("File selected:", file.name);
+            alert("Loading file: " + file.name);
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    console.log("Parsing JSON data...");
+                    const jsonData = JSON.parse(e.target.result);
+
+                    alert("JSON loaded successfully! Processing...");
+                    console.log("JSON parsed successfully:", jsonData);
+
+                    document.getElementById('output').innerHTML = '';  // Clear previous content
+                    processJson(jsonData, "Root");
+
+                } catch (error) {
+                    alert("Error: Invalid JSON file!");
+                    console.error("Error parsing JSON:", error);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        function processJson(data, label, depth = 0) {
+            console.log(`Processing section: ${label}, Depth: ${depth}`, data);
+            const outputDiv = document.getElementById('output');
+
+            if (Array.isArray(data)) {
+                console.log(`Found array in ${label}, generating table...`);
+                generateTable(data, label, outputDiv);
+            } else if (typeof data === "object" && data !== null) {
+                console.log(`Found object in ${label}, drilling into keys...`);
+                const sectionDiv = document.createElement('div');
+                sectionDiv.className = "data-container";
+                sectionDiv.innerHTML = `<h3>${label}</h3>`;
+
+                const objectKeys = Object.keys(data);
+                objectKeys.forEach(key => {
+                    if (Array.isArray(data[key])) {
+                        processJson(data[key], `${label} → ${key}`, depth + 1);
+                    } else if (typeof data[key] === "object" && data[key] !== null) {
+                        processJson(data[key], `${label} → ${key}`, depth + 1);
+                    } else {
+                        console.log(`Extracting primitive value: ${key} →`, data[key]);
+                        const valueDiv = document.createElement('div');
+                        valueDiv.className = "json-value";
+                        valueDiv.innerHTML = `<strong>${key}:</strong> ${data[key]}`;
+                        sectionDiv.appendChild(valueDiv);
+                    }
+                });
+
+                outputDiv.appendChild(sectionDiv);
+            } else {
+                console.log(`Found primitive value in ${label}:`, data);
+                const valueDiv = document.createElement('div');
+                valueDiv.className = "json-value";
+                valueDiv.innerHTML = `<strong>${label}:</strong> ${data}`;
+                outputDiv.appendChild(valueDiv);
+            }
+        }
+
+        function generateTable(data, label, container) {
+            if (!data.length) return;
+
+            const sectionDiv = document.createElement('div');
+            sectionDiv.className = "data-container";
+            sectionDiv.innerHTML = `<h3>${label}</h3>`;
+
+            const table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const tbody = document.createElement('tbody');
+            filters[label] = {};
+
+            const columns = Object.keys(data[0]);
+
+            // Create table headers
+            const headerRow = document.createElement('tr');
+            columns.forEach((col, index) => {
+                const th = document.createElement('th');
+                th.textContent = col;
+                th.onclick = () => sortTable(table, index);
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+
+            // Create filter row
+            const filterRow = document.createElement('tr');
+            columns.forEach(col => {
+                const filterCell = document.createElement('th');
+                const select = document.createElement('select');
+                select.innerHTML = '<option value="">All</option>';
+                select.onchange = function() {
+                    filters[label][col] = this.value;
+                    applyFilters(data, table, label);
+                };
+
+                const uniqueValues = [...new Set(data.map(item => item[col]))];
+                uniqueValues.forEach(value => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = value;
+                    select.appendChild(option);
+                });
+
+                filterCell.appendChild(select);
+                filterRow.appendChild(filterCell);
+            });
+            thead.appendChild(filterRow);
+
+            // Populate table body
+            updateTable(data, tbody);
+            table.appendChild(thead);
+            table.appendChild(tbody);
+            sectionDiv.appendChild(table);
+            container.appendChild(sectionDiv);
+
+            alert(`Table for ${label} generated successfully!`);
+            console.log(`Table for ${label} generated.`);
+        }
+
+        function updateTable(data, tbody) {
+            console.log("Updating table with filtered data:", data);
+            tbody.innerHTML = '';
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                Object.values(row).forEach(value => {
+                    const td = document.createElement('td');
+                    td.textContent = value;
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        function applyFilters(data, table, label) {
+            console.log(`Applying filters for ${label}:`, filters[label]);
+            const filteredData = data.filter(row => {
+                return Object.keys(filters[label]).every(col => {
+                    return !filters[label][col] || row[col] == filters[label][col];
+                });
+            });
+
+            updateTable(filteredData, table.querySelector('tbody'));
+        }
+
+        function sortTable(table, columnIndex) {
+            console.log("Sorting column index:", columnIndex);
+            const rows = Array.from(table.querySelector('tbody').rows);
+            const asc = table.getAttribute('data-sort-dir') !== 'asc';
+
+            rows.sort((rowA, rowB) => {
+                const cellA = rowA.cells[columnIndex].textContent.trim();
+                const cellB = rowB.cells[columnIndex].textContent.trim();
+                return asc ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+            });
+
+            table.setAttribute('data-sort-dir', asc ? 'asc' : 'desc');
+            table.querySelector('tbody').append(...rows);
+            console.log("Sorting completed. Order:", asc ? "Ascending" : "Descending");
+        }
+    </script>
+
+</body>
+</html>
